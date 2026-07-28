@@ -3,7 +3,9 @@ import { prisma } from "@formbricks/database";
 import { Prisma, Response } from "@formbricks/database/prisma";
 import { TContactAttributes } from "@formbricks/types/contact-attribute";
 import { Result, err, ok } from "@formbricks/types/error-handlers";
+import { InvalidInputError, ValidationError } from "@formbricks/types/errors";
 import { IS_FORMBRICKS_CLOUD } from "@/lib/constants";
+import { assertDisplayOwnership } from "@/lib/display/service";
 import { calculateTtcTotal, normalizeResponseLanguage } from "@/lib/response/utils";
 import { getContactByUserId } from "@/modules/api/v2/management/responses/lib/contact";
 import {
@@ -79,6 +81,22 @@ export const createResponse = async (
         return err(contactResult.error);
       }
       contact = contactResult.data;
+    }
+
+    // ENG-1923: displayId is caller-supplied and connected by id below. Verify it belongs to this
+    // survey/workspace (and isn't already linked) before linking it — otherwise a caller could
+    // attach another tenant's display (cross-tenant BOLA). Reuse the shared ownership guard and
+    // translate its thrown error into the v2 Result convention. A foreign display and a nonexistent
+    // one fail identically (404, generic) — no cross-tenant existence oracle.
+    if (displayId) {
+      try {
+        await assertDisplayOwnership(displayId, workspaceId, surveyId, contact?.id ?? null, tx);
+      } catch (error) {
+        if (error instanceof InvalidInputError || error instanceof ValidationError) {
+          return err({ type: "not_found", details: [{ field: "displayId", issue: "not found" }] });
+        }
+        throw error;
+      }
     }
 
     let ttc = {};

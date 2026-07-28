@@ -12,6 +12,8 @@ import {
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { prisma } from "@formbricks/database";
 import { err, ok } from "@formbricks/types/error-handlers";
+import { InvalidInputError } from "@formbricks/types/errors";
+import { assertDisplayOwnership } from "@/lib/display/service";
 import {
   getMonthlyOrganizationResponseCount,
   getOrganizationBilling,
@@ -23,6 +25,10 @@ vi.mock("@/modules/api/v2/management/responses/lib/organization", () => ({
   getOrganizationIdFromWorkspaceId: vi.fn(),
   getOrganizationBilling: vi.fn(),
   getMonthlyOrganizationResponseCount: vi.fn(),
+}));
+
+vi.mock("@/lib/display/service", () => ({
+  assertDisplayOwnership: vi.fn(),
 }));
 
 vi.mock("@formbricks/database", () => ({
@@ -109,6 +115,27 @@ describe("Response Lib", () => {
       if (result.ok) {
         expect(result.data).toEqual(response);
       }
+    });
+
+    // ENG-1923: a displayId that isn't valid for this survey/workspace must be rejected before the
+    // response is written (cross-tenant BOLA). A foreign display and a nonexistent one fail
+    // identically as a 404 — no cross-tenant existence oracle.
+    test("rejects a displayId that does not belong to the survey/workspace (ENG-1923)", async () => {
+      vi.mocked(assertDisplayOwnership).mockRejectedValueOnce(
+        new InvalidInputError("Display belongs to a different workspace")
+      );
+
+      const result = await createResponse(workspaceId, responseInput);
+
+      expect(assertDisplayOwnership).toHaveBeenCalled();
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error).toEqual({
+          type: "not_found",
+          details: [{ field: "displayId", issue: "not found" }],
+        });
+      }
+      expect(prisma.response.create).not.toHaveBeenCalled();
     });
 
     test("return error if getOrganizationIdFromWorkspaceId fails", async () => {
