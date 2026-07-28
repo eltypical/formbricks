@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 import { DatabaseError, ResourceNotFoundError } from "@formbricks/types/errors";
-import { handleUnexpectedError, hubErrorToProblemResponse } from "./errors";
+import { handleUnexpectedError, hubErrorToProblemResponse } from "./hub-errors";
 
 vi.mock("server-only", () => ({}));
 
@@ -81,15 +81,34 @@ describe("hubErrorToProblemResponse", () => {
     expect((await response.json()).detail).toBe("The feedback service is unavailable.");
   });
 
-  // A 503 means embeddings aren't configured — a deployment-level fact no retry fixes, so it must not be
-  // folded into the generic "unavailable" 502 that reads as "try again".
-  test("maps a 503 to an actionable configuration message rather than a 502", async () => {
+  // A 503 means some optional Hub subsystem this endpoint needs isn't configured — a deployment-level fact
+  // no retry fixes, so it must not fold into the generic "unavailable" 502 that reads as "try again".
+  test("maps a 503 to service_unavailable rather than a 502", async () => {
     const response = hubErrorToProblemResponse(hubError(503), requestId, instance);
     const body = await response.json();
 
     expect(response.status).toBe(503);
     expect(body.code).toBe("service_unavailable");
-    expect(body.detail).toContain("EMBEDDING_PROVIDER");
+  });
+
+  // The Hub returns 503 for several unrelated unconfigured subsystems, so the wording has to come from the
+  // caller. A shared message would be wrong on some surface — which is exactly the bug this parameter fixes.
+  test("uses the caller's service-unavailable wording, never a shared guess", async () => {
+    const detail = "Taxonomy generation is unavailable on this deployment.";
+
+    const body = await hubErrorToProblemResponse(hubError(503), requestId, instance, {
+      serviceUnavailableDetail: detail,
+    }).json();
+
+    expect(body.detail).toBe(detail);
+  });
+
+  test("falls back to a deliberately vague 503 detail when the caller says nothing", async () => {
+    const body = await hubErrorToProblemResponse(hubError(503), requestId, instance).json();
+
+    // Vague on purpose: naming the wrong subsystem is worse than naming none.
+    expect(body.detail).toContain("not configured on this deployment");
+    expect(body.detail).not.toContain("EMBEDDING");
   });
 });
 

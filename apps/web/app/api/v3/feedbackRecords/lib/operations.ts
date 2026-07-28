@@ -38,12 +38,12 @@ import {
   resolveWorkspaceFeedbackTenant,
 } from "./access";
 import {
-  EMBEDDING_PENDING_DETAIL,
   handleUnexpectedError,
   hubErrorToProblemResponse,
   relayableHubDetail,
   toInvalidParams,
-} from "./errors";
+} from "@/app/api/v3/lib/hub-errors";
+import { EMBEDDING_PENDING_DETAIL, EMBEDDINGS_UNAVAILABLE_DETAIL } from "./errors";
 import {
   SIMILARITY_LIMIT_DEFAULT,
   SIMILARITY_MIN_SCORE_DEFAULT,
@@ -937,7 +937,9 @@ export async function searchV3FeedbackRecords({
         },
         "Hub semanticSearchFeedbackRecords failed"
       );
-      return hubErrorToProblemResponse(result.error, requestId, instance);
+      return hubErrorToProblemResponse(result.error, requestId, instance, {
+        serviceUnavailableDetail: EMBEDDINGS_UNAVAILABLE_DETAIL,
+      });
     }
 
     return similarityMatchesResponse(result.data, resolution, filters.data.minScore, requestId);
@@ -1034,7 +1036,9 @@ export async function findSimilarV3FeedbackRecords({
         },
         "Hub findSimilarFeedbackRecords failed"
       );
-      return hubErrorToProblemResponse(result.error, requestId, instance);
+      return hubErrorToProblemResponse(result.error, requestId, instance, {
+        serviceUnavailableDetail: EMBEDDINGS_UNAVAILABLE_DETAIL,
+      });
     }
 
     return similarityMatchesResponse(result.data, resolution, filters.data.minScore, requestId);
