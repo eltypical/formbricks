@@ -1524,5 +1524,111 @@ describe("Survey Logic", () => {
         )
       ).toBe(true);
     });
+
+    test("doesNotEqual returns false for single-element MultipleChoiceMulti when answer matches condition value (regression #8527)", () => {
+      // Bug: old code used `|| leftValue !== rightValue` which is ALWAYS true
+      // when leftValue is an array and rightValue is a string, so doesNotEqual
+      // fired even when the user selected exactly the target value.
+      const singleSelectionData: TResponseData = {
+        ...mockData,
+        q4: ["Option 1"], // single selection -- maps to choice id "opt1"
+      };
+
+      const condition: TConditionGroup = {
+        id: "group-dne-match",
+        connector: "and",
+        conditions: [
+          {
+            id: "cond-dne-match",
+            operator: "doesNotEqual",
+            leftOperand: { type: "element", value: "q4" },
+            rightOperand: { type: "static", value: "opt1" },
+          },
+        ],
+      };
+
+      // Answer IS "opt1" -> doesNotEqual must be FALSE
+      expect(evaluateLogic(mockSurvey, singleSelectionData, mockVariablesData, condition, "default")).toBe(
+        false
+      );
+    });
+
+    test("doesNotEqual returns true for single-element MultipleChoiceMulti when answer does NOT match condition value (regression #8527)", () => {
+      const singleSelectionData: TResponseData = {
+        ...mockData,
+        q4: ["Option 1"], // single selection -- maps to choice id "opt1"
+      };
+
+      const condition: TConditionGroup = {
+        id: "group-dne-no-match",
+        connector: "and",
+        conditions: [
+          {
+            id: "cond-dne-no-match",
+            operator: "doesNotEqual",
+            leftOperand: { type: "element", value: "q4" },
+            rightOperand: { type: "static", value: "opt2" }, // different value
+          },
+        ],
+      };
+
+      // Answer is "opt1", condition checks for "opt2" -> doesNotEqual must be TRUE
+      expect(evaluateLogic(mockSurvey, singleSelectionData, mockVariablesData, condition, "default")).toBe(
+        true
+      );
+    });
+
+    test("doesNotEqual is the exact inverse of equals for single-element MultipleChoiceMulti (regression #8527)", () => {
+      const singleSelectionData: TResponseData = {
+        ...mockData,
+        q4: ["Option 1"], // maps to "opt1"
+      };
+
+      const equalsCondition: TConditionGroup = {
+        id: "group-eq",
+        connector: "and",
+        conditions: [
+          {
+            id: "cond-eq",
+            operator: "equals",
+            leftOperand: { type: "element", value: "q4" },
+            rightOperand: { type: "static", value: "opt1" },
+          },
+        ],
+      };
+
+      const doesNotEqualCondition: TConditionGroup = {
+        id: "group-dne",
+        connector: "and",
+        conditions: [
+          {
+            id: "cond-dne",
+            operator: "doesNotEqual",
+            leftOperand: { type: "element", value: "q4" },
+            rightOperand: { type: "static", value: "opt1" },
+          },
+        ],
+      };
+
+      const equalsResult = evaluateLogic(
+        mockSurvey,
+        singleSelectionData,
+        mockVariablesData,
+        equalsCondition,
+        "default"
+      );
+      const doesNotEqualResult = evaluateLogic(
+        mockSurvey,
+        singleSelectionData,
+        mockVariablesData,
+        doesNotEqualCondition,
+        "default"
+      );
+
+      // Must be strict inverses of each other
+      expect(equalsResult).toBe(true);
+      expect(doesNotEqualResult).toBe(false);
+      expect(equalsResult).toBe(!doesNotEqualResult);
+    });
   });
 });
