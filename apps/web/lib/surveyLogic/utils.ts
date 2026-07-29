@@ -376,12 +376,17 @@ const evaluateSingleCondition = (
           }
         }
 
-        return (
+        // doesNotEqual must be the exact inverse of equals to avoid the
+        // array-ref-vs-string pitfall: an array is never === a string, so
+        // `leftValue !== rightValue` alone would always be true for single-
+        // element arrays, making this condition permanently fire even when
+        // the selection matches the condition value.
+        return !(
           (Array.isArray(leftValue) &&
             leftValue.length === 1 &&
             typeof rightValue === "string" &&
-            !leftValue.includes(rightValue)) ||
-          leftValue !== rightValue
+            leftValue.includes(rightValue)) ||
+          leftValue === rightValue
         );
       case "contains":
         return String(leftValue).includes(String(rightValue));
